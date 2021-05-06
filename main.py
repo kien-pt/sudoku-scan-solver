@@ -22,20 +22,23 @@ from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QThread
 from PyQt5 import QtCore
 import image_proc as ip
 import digit_classify as dc
-import sudoku_solver as sol
+# import sudoku_solver as sol
+import sudoku as sol
 
 width = 1920
 height = 1080
-sudoku_size = width * 0.25 - 8
+sudoku_size = int(width * 0.25 - 8)
 cell_size = int(sudoku_size / 9)
+index = 0
 
 
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
     send_solution = pyqtSignal(list, list)
 
-    def __init__(self):
+    def __init__(self, url):
         super().__init__()
+        self.url = url
         self.curr = time.time()
         self.con_start = time.time()
         self.discon_start = time.time()
@@ -45,12 +48,13 @@ class VideoThread(QThread):
         self.done = False
         # print(type(self.matrix))
         self.matrix = [[0 for i in range(9)] for j in range(9)]
+        self.sol_list = []
         self.sol = [[0 for i in range(9)] for j in range(9)]
         self.pred = [[[0, 0] for i in range(9)] for j in range(9)]
         self._run_flag = True
 
     def run(self):
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(self.url)
         while self._run_flag:
             if not self.done:
                 if self.src_frame is not None:
@@ -62,18 +66,23 @@ class VideoThread(QThread):
                             if image.sum() > 10000:
                                 val, prob = dc.classify_image(image)
                                 self.pred[self.row][self.col] = [val, prob]
-                                # save_img = image.resize(cell_size, cell_size)
                                 save_img = cv2.resize(img, (52, 52))
-                                cv2.imwrite('./cells/' + str(self.row) + str(self.col) + '.jpg', save_img)
+                                cv2.imwrite('./cells/' + str(self.row) + str(self.col) + '.jpg', cv2.bitwise_not(save_img))
                                 self.matrix[self.row][self.col] = val
                             self.col += 1
                         if self.col == 9:
                             self.col = 0
                             self.row += 1
                     else:
-                        self.sol = sol.solution(self.matrix)
-                        self.send_solution.emit(self.sol, self.pred)
-                        # self.send_predict.emit(self.pred)
+                        # self.sol = sol.solution(self.matrix)[]
+                        res = sol.sudoku_solver(self.matrix)
+                        # print(type(res))
+                        # print(len(cc))
+                        if len(res) > 0:
+                            self.sol_list = res
+                            self.sol = self.sol_list[globals()['index']]
+                            self.send_solution.emit(self.sol_list, self.pred)
+                            # self.send_predict.emit(self.pred)
                         self.done = True
 
             ret, cv_img = cap.read()
@@ -136,8 +145,8 @@ class App(QMainWindow):
 
         self.width = 1920
         self.height = 1080
-        self.sudoku_size = self.width * 0.25 - 8
-        self.cell_size = self.sudoku_size / 9
+        self.sudoku_size = int(self.width * 0.25 - 8)
+        self.cell_size = int(self.sudoku_size / 9)
         self.display_width = self.width * 0.75 * 2 / 3 - 8
         self.display_height = self.display_width * 0.75
         self.title = 'SUDOKU SOLVER'
@@ -147,10 +156,16 @@ class App(QMainWindow):
         self.header = QWidget(self)
         self.textbox = QLineEdit(self)
         self.button = QPushButton(self)
-        self.button_list = [[None for i in range(9)] for i in range(9)]
+        self.image_label = QLabel(self)
+        self.thread = VideoThread(0)
+        self.sudoku_cotainer = QWidget(self)
+        self.button_list = [[None for _ in range(9)] for _ in range(9)]
         self.tableWidget = QTableWidget(self)
+        self.button_left = QPushButton(self)
+        self.button_right = QPushButton(self)
         self.textbox1 = QLineEdit(self)
         #
+        self.solution_list = []
         self.solution = [[0 for i in range(9)] for j in range(9)]
         self.predict = [[[0, 0] for i in range(9)] for j in range(9)]
         self.initUI()
@@ -192,29 +207,35 @@ class App(QMainWindow):
         self.textbox1.resize(0, 0)
         self.textbox1.setFocus()
 
-        self.image_label = QLabel(self)
         self.image_label.move(self.width * 0.25 / 2, 84)
         self.image_label.resize(self.display_width, self.display_height)
+        self.image_label.setStyleSheet("""
+            background-color: #000000;
+        """)
 
-        self.thread = VideoThread()
         self.thread.change_pixmap_signal.connect(self.update_image)
         self.thread.send_solution.connect(self.receive_solution)
-        # self.thread.send_predict.connect(self.receive_predict)
         self.thread.start()
+
+        self.sudoku_cotainer.resize(self.sudoku_size + 12, self.sudoku_size + 12)
+        self.sudoku_cotainer.move(self.width * 0.625 + 16, 84)
+        self.sudoku_cotainer.setStyleSheet("""
+            background-color: #000000;
+        """)
 
         for row in range(9):
             for col in range(9):
                 button = QPushButton(self)
+                if self.solution[row][col] > 0:
+                    button.setText(str(self.solution[row][col]))
+                button.move(self.width * 0.625 + 18 + (self.cell_size + 1) * col + int(col / 3) * 2, 86 + (self.cell_size + 1) * row + int(row / 3) * 2)
                 button.resize(self.cell_size, self.cell_size)
-                button.move(self.width * 0.625 + 16 + (self.cell_size + 2) * col, 84 + (self.cell_size + 2) * row)
                 button.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
-                # button.clicked.connect(lambda: self.clickme(row, col))
                 if self.solution[row][col] < 0:
-                    button.setStyleSheet("border: solid 2px white; background-color: black; background-image : url(cells/" + str(row) + str(col) + ".jpg);")
+                    button.setStyleSheet("border: none; background-image : url(cells/" + str(row) + str(col) + ".jpg);")
                 else:
-                    button.setStyleSheet("border: solid 2px white; background-color: black;")
+                    button.setStyleSheet("border: none; background-color: white; color: #69A7F0")
                 self.button_list[row][col] = button
-                # self.button_list[row][col].clicked.connect(lambda: self.clickme(row, col))
 
         self.button_list[0][0].clicked.connect(lambda: self.clickme(0, 0))
         self.button_list[0][1].clicked.connect(lambda: self.clickme(0, 1))
@@ -308,7 +329,7 @@ class App(QMainWindow):
 
         self.tableWidget.setRowCount(1)
         self.tableWidget.setColumnCount(2)
-        self.tableWidget.resize(sudoku_size + 16, 70)
+        self.tableWidget.resize(sudoku_size + 12, 64)
         self.tableWidget.move(self.width * 0.625 + 16, 84 + sudoku_size + 32)
         self.tableWidget.verticalHeader().hide()
         self.tableWidget.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
@@ -316,6 +337,61 @@ class App(QMainWindow):
         self.tableWidget.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
         self.tableWidget.setHorizontalHeaderLabels(["Predict", "Probability"])
 
+        self.button_left.resize(48, 48)
+        self.button_left.move(self.width * 0.875 - 74, 84 + sudoku_size + 120)
+        self.button_left.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
+        self.button_left.setText("<")
+        self.button_left.setStyleSheet("""
+            QPushButton {
+                background-color: #f9f9f9;
+                border: none;
+                border-radius: 50%;
+            }
+            QPushButton::hover {
+                background-color : #e7e7e7;
+                border-radius: 50%;
+            }
+            QPushButton::pressed {
+                background-color : #b7b7b7;
+                border-radius: 50%;
+            }
+        """)
+
+        self.button_right.resize(48, 48)
+        self.button_right.move(self.width * 0.875 - 26, 84 + sudoku_size + 120)
+        self.button_right.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
+        self.button_right.setText(">")
+        self.button_right.setStyleSheet("""
+            QPushButton {
+                background-color: #f9f9f9;
+                border: none;
+                border-radius: 50%;
+            }
+            QPushButton::hover {
+                background-color : #e7e7e7;
+                border-radius: 50%;
+            }
+            QPushButton::pressed {
+                background-color : #b7b7b7;
+                border-radius: 50%;
+            }
+        """)
+
+        self.button_left.clicked.connect(lambda: self.changeIndex(-1))
+        self.button_right.clicked.connect(lambda: self.changeIndex(1))
+
+    def keyPressEvent(self, qKeyEvent):
+        if qKeyEvent.key() == QtCore.Qt.Key_Return:
+            url = self.textbox.text()
+            print(url)
+            self.thread.stop()
+            self.thread = VideoThread(url)
+            self.thread.change_pixmap_signal.connect(self.update_image)
+            self.thread.send_solution.connect(self.receive_solution)
+            self.thread.start()
+            self.textbox1.setFocus()
+        else:
+            super().keyPressEvent(qKeyEvent)
 
     @pyqtSlot()
     def on_click(self):
@@ -332,15 +408,23 @@ class App(QMainWindow):
 
     @pyqtSlot(list, list)
     def receive_solution(self, sol, pred):
-        self.solution = sol
+        self.solution_list = sol
+        self.solution = self.solution_list[globals()['index']]
         self.predict = pred
-        print(self.predict)
         for row in range(9):
             for col in range(9):
                 if self.solution[row][col] < 0:
-                    self.button_list[row][col].setStyleSheet("border: solid 2px white; background-color: black; background-image : url(cells/" + str(row) + str(col) + ".jpg);")
+                    self.button_list[row][col].setText("")
+                    self.button_list[row][col].setStyleSheet("border: none; background-image : url(cells/" + str(row) + str(col) + ".jpg);")
                 else:
-                    self.button_list[row][col].setStyleSheet("border: solid 2px white; background-color: black;")
+                    self.button_list[row][col].setText(str(self.solution[row][col]))
+                    self.button_list[row][col].setStyleSheet("""
+                        border: none;
+                        background-color: white;
+                        color: #69A7F0;
+                        font-size: 38px;
+                        font-weight: bold;
+                    """)
 
 
     def convert_cv_qt(self, cv_img):
@@ -354,13 +438,42 @@ class App(QMainWindow):
 
     @pyqtSlot(int)
     def clickme(self, row, col):
-        item0 = QTableWidgetItem(str(self.predict[row][col][0]))  # create the item
+        str1 = ""
+        str2 = ""
+        if self.predict[row][col][0] > 0:
+            str1 = str(self.predict[row][col][0])
+            str2 = str(self.predict[row][col][1])
+
+        item0 = QTableWidgetItem(str1)  # create the item
         item0.setTextAlignment(Qt.AlignHCenter)  # change the alignment
         self.tableWidget.setItem(0, 0, item0)
 
-        item1 = QTableWidgetItem(str(self.predict[row][col][1]))  # create the item
+        item1 = QTableWidgetItem(str2)  # create the item
         item1.setTextAlignment(Qt.AlignHCenter)  # change the alignment
         self.tableWidget.setItem(0, 1, item1)
+
+    @pyqtSlot(int)
+    def changeIndex(self, num):
+        lencc = len(self.solution_list)
+        globals()['index'] = (globals()['index'] + num + lencc) % lencc
+        print(globals()['index'])
+        self.solution = self.solution_list[globals()['index']]
+        for row in range(9):
+            for col in range(9):
+                if self.solution[row][col] < 0:
+                    self.button_list[row][col].setText("")
+                    self.button_list[row][col].setStyleSheet(
+                        "border: none; background-image : url(cells/" + str(row) + str(col) + ".jpg);")
+                else:
+                    self.button_list[row][col].setText(str(self.solution[row][col]))
+                    self.button_list[row][col].setStyleSheet("""
+                        border: none;
+                        background-color: white;
+                        color: #69A7F0;
+                        font-size: 38px;
+                        font-weight: bold;
+                    """)
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
