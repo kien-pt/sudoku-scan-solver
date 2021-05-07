@@ -2,44 +2,35 @@ import cplex
 from cplex.exceptions import CplexError
 
 
-def sudokuReader(filename):
-    sudoku = []
-    with open(filename) as f:
-        for line in f.readlines():
-            row = [int(x) for x in line.split()]
-            sudoku.append(row)
-    return sudoku
-
-
-def getVarName(row, col, digit):
+def get_var_name(row, col, digit):
     return "x" + str(row * 100 + col * 10 + digit)
 
 
-def lpInitialization(sudoku, prob):
+def lp_init(sudoku, prob):
     prob.objective.set_sense(prob.objective.sense.maximize)
-    myObj = [0] * (9 ** 3)
-    myLowerBound = [0] * (9 ** 3)
-    myUpperBound = [1] * (9 ** 3)
-    myCtype = "I" * (9 ** 3)
-    myColNames = []
+    my_obj = [0] * (9 ** 3)
+    my_lower_bound = [0] * (9 ** 3)
+    my_upper_bound = [1] * (9 ** 3)
+    my_c_type = "I" * (9 ** 3)
+    my_col_names = []
 
     for row in range(9):
         for col in range(9):
             for digit in range(1, 10):
-                varName = getVarName(row, col, digit)
-                myColNames.append(varName)
+                varName = get_var_name(row, col, digit)
+                my_col_names.append(varName)
 
     for row in range(9):
         for col in range(9):
             if sudoku[row][col] > 0:
                 for digit in range(1, 10):
-                    pos = myColNames.index(getVarName(row, col, digit))
+                    pos = my_col_names.index(get_var_name(row, col, digit))
                     if sudoku[row][col] == digit:
-                        myLowerBound[pos] = myUpperBound[pos] = 1
+                        my_lower_bound[pos] = my_upper_bound[pos] = 1
                     else:
-                        myLowerBound[pos] = myUpperBound[pos] = 0
+                        my_lower_bound[pos] = my_upper_bound[pos] = 0
 
-    prob.variables.add(obj=myObj, lb=myLowerBound, ub=myUpperBound, types=myCtype, names=myColNames)
+    prob.variables.add(obj=my_obj, lb=my_lower_bound, ub=my_upper_bound, types=my_c_type, names=my_col_names)
 
     rows = []
     rhs = []
@@ -49,7 +40,7 @@ def lpInitialization(sudoku, prob):
             variables = []
             coefficients = [1 for _ in range(9)]
             for row in range(9):
-                variables.append(getVarName(row, col, digit))
+                variables.append(get_var_name(row, col, digit))
             rows.append([variables, coefficients])
             rhs.append(1)
 
@@ -58,7 +49,7 @@ def lpInitialization(sudoku, prob):
             variables = []
             coefficients = [1 for _ in range(9)]
             for col in range(9):
-                variables.append(getVarName(row, col, digit))
+                variables.append(get_var_name(row, col, digit))
             rows.append([variables, coefficients])
             rhs.append(1)
 
@@ -71,7 +62,7 @@ def lpInitialization(sudoku, prob):
                     for j in range(3):
                         row = box_top * 3 + i
                         col = box_left * 3 + j
-                        variables.append(getVarName(row, col, digit))
+                        variables.append(get_var_name(row, col, digit))
                 rows.append([variables, coefficients])
                 rhs.append(1)
 
@@ -80,19 +71,19 @@ def lpInitialization(sudoku, prob):
             variables = []
             coefficients = [1 for _ in range(9)]
             for digit in range(1, 10):
-                variables.append(getVarName(row, col, digit))
+                variables.append(get_var_name(row, col, digit))
             rows.append([variables, coefficients])
             rhs.append(1)
 
     mySense = "E" * len(rows)
     myRowNames = ["r" + str(num) for num in range(len(rows))]
     prob.linear_constraints.add(lin_expr=rows, senses=mySense, rhs=rhs, names=myRowNames)
-    return myColNames
+    return my_col_names
 
 
 def sudoku_solver(sudoku):
     myProb = cplex.Cplex()
-    myColNames = lpInitialization(sudoku, myProb)
+    my_col_names = lp_init(sudoku, myProb)
     myProb.parameters.mip.limits.populate.set(5)
 
     solution = []
@@ -105,7 +96,7 @@ def sudoku_solver(sudoku):
             for row in range(9):
                 for col in range(9):
                     for digit in range(1, 10):
-                        pos = myColNames.index(getVarName(row, col, digit))
+                        pos = my_col_names.index(get_var_name(row, col, digit))
                         if x[pos] == 1:
                             if sudoku[row][col] > 0:
                                 sol[row][col] = -1
