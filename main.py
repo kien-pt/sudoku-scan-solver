@@ -66,8 +66,7 @@ class VideoThread(QThread):
                             img = self.src_frame[36 * self.row + 4:36 * self.row + 32, 36 * self.col + 4:36 * self.col + 32]
                             img = cv2.resize(img, (28, 28))
                             image = img.reshape(1, 28, 28, 1)
-                            print(image.sum())
-                            if image.sum() > 10000:
+                            if image.sum() > 15000:
                                 val, prob = dc.classify_image(image)
                                 save_img = cv2.resize(img, (52, 52))
                                 self.matrix[self.row][self.col] = val
@@ -78,6 +77,8 @@ class VideoThread(QThread):
                             self.col = 0
                             self.row += 1
                         self.process_percent += 3.35
+                        if self.process_percent < 100:
+                            self.send_process_percent.emit(self.process_percent)
                     else:
                         res = sol.sudoku_solver(self.matrix)
                         self.process_percent = 1000
@@ -117,13 +118,12 @@ class VideoThread(QThread):
                     if time.time() - self.con_start >= 2 or self.done:
                         if self.src_frame is None:
                             self.src_frame = ip.getSudoku(thresh, contour_grille)
+                            cv2.imwrite('cc.jpg', self.src_frame)
                         if not(self.currentIndex == globals()['index']):
                             self.currentIndex = globals()['index']
                             self.sol = self.sol_list[self.currentIndex]
                         final = ip.img_proc(cv_img, contour_grille, self.sol)
                         self.change_pixmap_signal.emit(final)
-                        if self.process_percent < 100:
-                            self.send_process_percent.emit(self.process_percent)
                         continue
                 else:
                     self.con_start = None
@@ -139,6 +139,7 @@ class VideoThread(QThread):
                             self.process_percent = 0
                             self.sol = [[0 for _ in range(9)] for _ in range(9)]
                             self.matrix = [[0 for _ in range(9)] for _ in range(9)]
+                            self.pred = [[[0, 0] for i in range(9)] for j in range(9)]
 
                 self.change_pixmap_signal.emit(cv_img)
 
@@ -166,7 +167,9 @@ class App(QMainWindow):
         self.x = 500
         self.y = 200
         self.header = QWidget(self)
+        self.logo = QLabel(self)
         self.textbox = QLineEdit(self)
+        self.team = QLabel(self)
         self.button = QPushButton(self)
         self.image_label = QLabel(self)
         self.thread = VideoThread(0)
@@ -191,6 +194,17 @@ class App(QMainWindow):
 
         self.header.resize(self.width, 54)
         self.header.setStyleSheet("background-color: #ffffff;")
+
+        self.logo.resize(203, 40)
+        self.logo.move(self.width * 0.25 / 2, 7)
+        pixmap = QPixmap('logo.jpg')
+        self.logo.setPixmap(pixmap)
+
+        self.team.resize(85, 40)
+        self.team.move(self.width * 0.8825 - 85, 7)
+        pixmap = QPixmap('team.jpg')
+        self.team.setPixmap(pixmap)
+        self.team.setStyleSheet("float: right;")
 
         self.textbox.resize(self.width / 3 - 64, 32)
         self.textbox.move(self.width / 3, 11)
@@ -277,7 +291,7 @@ class App(QMainWindow):
             }
             QPushButton::pressed {
                 background-color : #b7b7b7;
-s            }
+            }
         """)
 
         self.button_right.resize(48, 48)
@@ -459,7 +473,20 @@ s            }
             self.solution = self.solution_list[globals()['index']]
         self.predict = pred
         self.reset_buttons()
-
+        if temp_len == 0:
+            print(self.predict)
+            for row in range(9):
+                for col in range(9):
+                    if self.predict[row][col][0] > 0:
+                        self.button_list[row][col].setText("")
+                        self.button_list[row][col].setStyleSheet(
+                            "border: none; background-image : url(cells/" + str(row) + str(col) + ".jpg);")
+                    else:
+                        self.button_list[row][col].setText("")
+                        self.button_list[row][col].setStyleSheet("""
+                            border: none;
+                            background-color: #ffffff;
+                        """)
 
     @pyqtSlot(float)
     def receive_process_percent(self, process_percent):

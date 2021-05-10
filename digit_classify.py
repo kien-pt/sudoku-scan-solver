@@ -8,3 +8,4 @@ def classify_image(image):
     class_inx = int(model.predict_classes(image))
     prob_val = np.amax(model.predict(image))
     return class_inx, prob_val
+
