@@ -84,7 +84,7 @@ def lp_init(sudoku, prob):
 def sudoku_solver(sudoku):
     myProb = cplex.Cplex()
     my_col_names = lp_init(sudoku, myProb)
-    myProb.parameters.mip.limits.populate.set(5)
+    myProb.parameters.mip.limits.populate.set(7)
 
     solution = []
 

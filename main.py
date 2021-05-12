@@ -121,7 +121,8 @@ class VideoThread(QThread):
                             cv2.imwrite('cc.jpg', self.src_frame)
                         if not(self.currentIndex == globals()['index']):
                             self.currentIndex = globals()['index']
-                            self.sol = self.sol_list[self.currentIndex]
+                            if (self.currentIndex < len(self.sol_list)):
+                                self.sol = self.sol_list[self.currentIndex]
                         final = ip.img_proc(cv_img, contour_grille, self.sol)
                         self.change_pixmap_signal.emit(final)
                         continue
@@ -131,9 +132,11 @@ class VideoThread(QThread):
                         if self.discon_start is None:
                             self.discon_start = time.time()
                         if time.time() - self.discon_start >= 3:
+                            globals()['index'] = 0
                             self.row = 0
                             self.col = 0
                             self.done = False
+                            self.sol_list = []
                             self.src_frame = None
                             self.discon_start = None
                             self.process_percent = 0
